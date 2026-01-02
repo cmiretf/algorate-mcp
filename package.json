@@ -11,7 +11,8 @@
     "test": "node --test src/tests/*.test.ts",
     "prepare": "npm run build",
     "example:simple": "npm run build && node examples/simple-test.js",
-    "example:sorting": "npm run build && node examples/sorting-benchmark.js"
+    "example:sorting": "npm run build && node examples/sorting-benchmark.js",
+    "inspector": "npm run build && npx @modelcontextprotocol/inspector node dist/index.js"
   },
   "keywords": [
     "mcp",
