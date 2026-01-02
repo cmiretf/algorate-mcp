@@ -6,9 +6,19 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import { Orchestrator } from './core/orchestrator.js';
-import { BenchmarkConfigSchema } from './types/index.js';
+import { BenchmarkConfigSchema, type ComparisonResult } from './types/index.js';
+import { AlgorithmDetector } from './auto-detection/algorithm-detector.js';
+import { WorkloadGenerator } from './auto-detection/workload-generator.js';
+import { ChartGenerator } from './visualization/chart-generator.js';
+import { ResultStorage } from './storage/result-storage.js';
+import { QueryEngine } from './query/query-engine.js';
 
 const orchestrator = new Orchestrator();
+const queryEngine = new QueryEngine(orchestrator);
+const detector = new AlgorithmDetector();
+const workloadGenerator = new WorkloadGenerator();
+const chartGenerator = new ChartGenerator();
+const storage = new ResultStorage();
 
 const server = new Server(
   {
@@ -128,6 +138,73 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           required: ['implementationId', 'testCaseId'],
         },
       },
+      {
+        name: 'auto_detect_algorithms',
+        description: 'Automatically detect algorithms in project files',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            directories: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Directories to scan (default: src, examples)',
+            },
+          },
+        },
+      },
+      {
+        name: 'auto_benchmark',
+        description: 'Automatically run benchmarks for detected or registered algorithms',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            algorithmIds: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Algorithm IDs to benchmark (empty = all)',
+            },
+            forceRefresh: {
+              type: 'boolean',
+              description: 'Force refresh even if cached results exist',
+            },
+          },
+        },
+      },
+      {
+        name: 'generate_chart',
+        description: 'Generate performance chart for benchmark results',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            algorithmId: { type: 'string', description: 'Algorithm ID' },
+            testCaseId: { type: 'string', description: 'Test case ID (optional)' },
+          },
+          required: ['algorithmId'],
+        },
+      },
+      {
+        name: 'query_performance',
+        description: 'Query performance analysis with automatic benchmark and summary',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            query: {
+              type: 'string',
+              description: 'Query about algorithm performance (e.g., "sorting algorithms", "all algorithms")',
+            },
+            forceRefresh: {
+              type: 'boolean',
+              description: 'Force refresh even if cached results exist',
+            },
+            directories: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Directories to scan for algorithms',
+            },
+          },
+          required: ['query'],
+        },
+      },
     ],
   };
 });
@@ -245,6 +322,203 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const parsed = schema.parse(args);
         const result = orchestrator.getResults(parsed.implementationId, parsed.testCaseId);
         return { content: [{ type: 'text', text: JSON.stringify(result ?? [], null, 2) }] };
+      }
+
+      case 'auto_detect_algorithms': {
+        const schema = z.object({
+          directories: z.array(z.string()).optional(),
+        });
+        const parsed = schema.parse(args);
+        const detected = await detector.detectAlgorithms({
+          directories: parsed.directories
+        });
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify({
+              count: detected.length,
+              algorithms: detected.map(a => ({
+                name: a.name,
+                language: a.language,
+                filePath: a.filePath,
+                lineNumber: a.lineNumber,
+                category: a.category,
+                description: a.description
+              }))
+            }, null, 2)
+          }]
+        };
+      }
+
+      case 'auto_benchmark': {
+        const schema = z.object({
+          algorithmIds: z.array(z.string()).optional(),
+          forceRefresh: z.boolean().optional().default(false),
+        });
+        const parsed = schema.parse(args);
+        
+        const algorithms = parsed.algorithmIds && parsed.algorithmIds.length > 0
+          ? parsed.algorithmIds.map(id => orchestrator.getAlgorithm(id)).filter(Boolean)
+          : orchestrator.listAlgorithms();
+
+        if (algorithms.length === 0) {
+          return {
+            content: [{ type: 'text', text: JSON.stringify({ error: 'No algorithms found to benchmark' }, null, 2) }],
+            isError: true
+          };
+        }
+
+        const results = [];
+        for (const algorithm of algorithms) {
+          if (!algorithm) continue;
+          
+          const category = algorithm.category || 'general';
+          const workloads = workloadGenerator.generateWorkloadsForCategory(category, algorithm.name);
+          
+          for (const workload of workloads) {
+            const testCase = orchestrator.registerTestCase(
+              workload.name,
+              workload.inputSize,
+              workload.inputType,
+              workload.input,
+              workload.expectedOutput,
+              workload.description
+            );
+
+            const config = BenchmarkConfigSchema.parse({
+              warmupRuns: 2,
+              measurementRuns: 5,
+              timeoutMs: 30000,
+              validateOutput: true,
+              collectMemoryMetrics: true,
+              isolateExecutions: true
+            });
+
+            const result = await orchestrator.runBenchmark(algorithm.id, testCase.id, config);
+            results.push(result);
+
+            const individualResults = orchestrator.getResults(
+              result.implementations[0]?.implementationId || '',
+              testCase.id
+            ) || [];
+
+            await storage.saveResults(
+              algorithm.id,
+              testCase.id,
+              result,
+              individualResults
+            );
+          }
+        }
+
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify({
+              algorithmsBenchmarked: algorithms.length,
+              benchmarksExecuted: results.length,
+              results: results.map(r => ({
+                algorithmId: r.algorithmId,
+                testCaseId: r.testCaseId,
+                implementations: r.implementations.length,
+                ranking: r.ranking
+              }))
+            }, null, 2)
+          }]
+        };
+      }
+
+      case 'generate_chart': {
+        const schema = z.object({
+          algorithmId: z.string(),
+          testCaseId: z.string().optional(),
+        });
+        const parsed = schema.parse(args);
+        
+        const stored = await storage.loadResults(parsed.algorithmId, parsed.testCaseId);
+        
+        if (!stored) {
+          return {
+            content: [{ type: 'text', text: JSON.stringify({ error: 'No results found for this algorithm' }, null, 2) }],
+            isError: true
+          };
+        }
+
+        let comparisonResults: ComparisonResult[] = [];
+        
+        if (stored instanceof Map) {
+          // Multiple test cases
+          for (const storedResult of stored.values()) {
+            if (storedResult && typeof storedResult === 'object' && 'comparisonResult' in storedResult) {
+              comparisonResults.push(storedResult.comparisonResult);
+            }
+          }
+        } else if (typeof stored === 'object' && 'comparisonResult' in stored) {
+          // Single test case
+          comparisonResults = [stored.comparisonResult];
+        }
+
+        if (comparisonResults.length === 0) {
+          return {
+            content: [{ type: 'text', text: JSON.stringify({ error: 'Invalid stored results' }, null, 2) }],
+            isError: true
+          };
+        }
+
+        const testCaseId = parsed.testCaseId || 'combined';
+        const chartPath = `benchmark-results/algorithms/${parsed.algorithmId}/charts/${testCaseId}.html`;
+        
+        const generatedPath = await chartGenerator.generateChart(
+          comparisonResults,
+          chartPath,
+          {
+            title: `Benchmark Results - ${parsed.algorithmId.slice(0, 8)}`,
+            showMemory: true,
+            showErrorBars: true
+          }
+        );
+
+        // Read the generated HTML and save it
+        const { readFile } = await import('fs/promises');
+        const chartHtml = await readFile(generatedPath, 'utf-8');
+        await storage.saveChart(parsed.algorithmId, testCaseId, chartHtml);
+
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify({
+              chartPath: generatedPath,
+              algorithmId: parsed.algorithmId,
+              testCaseId: testCaseId
+            }, null, 2)
+          }]
+        };
+      }
+
+      case 'query_performance': {
+        const schema = z.object({
+          query: z.string(),
+          forceRefresh: z.boolean().optional().default(false),
+          directories: z.array(z.string()).optional(),
+        });
+        const parsed = schema.parse(args);
+        
+        const response = await queryEngine.queryPerformance(parsed.query, {
+          forceRefresh: parsed.forceRefresh,
+          directories: parsed.directories
+        });
+
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify({
+              summary: response.summary,
+              chartPath: response.chartPath,
+              metrics: response.metrics,
+              alerts: response.alerts
+            }, null, 2)
+          }]
+        };
       }
 
       default:
