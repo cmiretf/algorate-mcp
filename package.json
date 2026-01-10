@@ -1,5 +1,5 @@
 {
-  "name": "algorate-mcp",
+  "name": "@cmiretf/algorate-mcp",
   "version": "1.0.0",
   "description": "MCP Server for comparing algorithm implementations through empirical benchmarking",
   "main": "dist/index.js",
