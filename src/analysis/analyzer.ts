@@ -3,9 +3,16 @@ import type {
   AggregatedResult,
   ComparisonResult,
   Statistics,
+  Implementation,
 } from '../types/index.js';
+import { CodeOptimizer } from './code-optimizer.js';
 
 export class Analyzer {
+  private codeOptimizer: CodeOptimizer;
+
+  constructor() {
+    this.codeOptimizer = new CodeOptimizer();
+  }
   calculateStatistics(values: number[]): Statistics {
     if (values.length === 0) {
       return {
@@ -71,10 +78,18 @@ export class Analyzer {
   compareImplementations(
     algorithmId: string,
     testCaseId: string,
-    results: AggregatedResult[]
+    results: AggregatedResult[],
+    implementation?: Implementation
   ): ComparisonResult {
     const ranking = this.generateRanking(results);
-    const insights = this.generateInsights(results);
+    let insights: string[];
+    
+    // If only one implementation, generate optimization insights
+    if (results.length === 1 && implementation) {
+      insights = this.generateOptimizationInsights(implementation, results[0]);
+    } else {
+      insights = this.generateInsights(results);
+    }
 
     return {
       algorithmId,
@@ -118,11 +133,49 @@ export class Analyzer {
     );
   }
 
+  generateOptimizationInsights(
+    implementation: Implementation,
+    result: AggregatedResult
+  ): string[] {
+    const insights: string[] = [];
+    const analysis = this.codeOptimizer.analyzeCode(implementation.code, implementation.entryFunction);
+
+    // Add complexity analysis
+    insights.push(`Complexity: Time ${analysis.complexity.time}, Space ${analysis.complexity.space}`);
+    if (analysis.complexity.notes) {
+      insights.push(`Analysis: ${analysis.complexity.notes}`);
+    }
+
+    // Add suggestions
+    if (analysis.suggestions.length > 0) {
+      insights.push('Optimization suggestions:');
+      analysis.suggestions.forEach(suggestion => {
+        insights.push(`  • ${suggestion}`);
+      });
+    }
+
+    // Performance-based insights
+    if (result.executionTime.mean > 100) {
+      insights.push('High execution time detected - consider optimizing algorithm complexity');
+    }
+
+    if (result.memoryPeak.mean > 10 * 1024 * 1024) {
+      insights.push('High memory usage detected - consider reducing space complexity');
+    }
+
+    // Add information about available optimizations
+    if (analysis.optimizedVersions.length > 0) {
+      insights.push(`\n${analysis.optimizedVersions.length} optimized version(s) generated for comparison`);
+    }
+
+    return insights;
+  }
+
   private generateInsights(results: AggregatedResult[]): string[] {
     const insights: string[] = [];
 
     if (results.length < 2) {
-      insights.push('Need at least 2 implementations to compare');
+      insights.push('Single implementation detected - optimization analysis available');
       return insights;
     }
 

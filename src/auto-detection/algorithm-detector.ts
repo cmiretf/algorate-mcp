@@ -15,6 +15,7 @@ export interface DetectedAlgorithm {
 
 export interface DetectionOptions {
   directories?: string[];
+  filePath?: string; // Specific file to analyze
   includePatterns?: string[];
   excludePatterns?: string[];
 }
@@ -57,6 +58,16 @@ export class AlgorithmDetector {
   async detectAlgorithms(
     options: DetectionOptions = {}
   ): Promise<DetectedAlgorithm[]> {
+    // If specific file path provided, only analyze that file
+    if (options.filePath) {
+      try {
+        return await this.detectInFile(options.filePath);
+      } catch (error) {
+        console.error(`Error analyzing file ${options.filePath}:`, error);
+        return [];
+      }
+    }
+
     const directories = options.directories || ["src", "examples"];
     const includePatterns = options.includePatterns || [".js", ".ts"];
     const excludePatterns = options.excludePatterns || [
@@ -128,28 +139,143 @@ export class AlgorithmDetector {
       const content = await readFile(filePath, "utf-8");
       const detected: DetectedAlgorithm[] = [];
 
-      const functionPatterns = [
-        // Function declarations: function name(...) { ... }
-        /function\s+(\w+)\s*\([^)]*\)\s*\{[\s\S]*?\n(?=\}|function|const|let|var|export|import|$)/g,
-        // Arrow functions: const name = (...) => { ... }
-        /(?:const|let|var|export\s+(?:const|let|var)?)\s+(\w+)\s*=\s*(?:\([^)]*\)|[^=]+)\s*=>\s*\{[\s\S]*?\n(?=\}|const|let|var|export|import|function|$)/g,
-        // Method definitions: name(...) { ... }
-        /\b(\w+)\s*\([^)]*\)\s*\{[\s\S]*?\n(?=\}|[a-zA-Z_$]\w*\s*\(|$)/g,
-      ];
+      // Track if we're inside a string to avoid detecting functions in strings
+      const isInString = (index: number): boolean => {
+        let inString = false;
+        let stringChar = '';
+        let i = 0;
+        while (i < index) {
+          const char = content[i];
+          const prevChar = i > 0 ? content[i - 1] : '';
+          
+          if (!inString && (char === '"' || char === "'" || char === '`')) {
+            inString = true;
+            stringChar = char;
+          } else if (inString && char === stringChar && prevChar !== '\\') {
+            inString = false;
+          }
+          i++;
+        }
+        return inString;
+      };
 
-      for (const pattern of functionPatterns) {
-        let match;
-        while ((match = pattern.exec(content)) !== null) {
-          const functionName = match[1];
-          const functionCode = match[0];
-          const lineNumber = content
-            .substring(0, match.index)
-            .split("\n").length;
-
+      // Extract standalone function declarations (not class methods, not in strings)
+      const standaloneFunctionPattern = /function\s+(\w+)\s*\([^)]*\)\s*\{/g;
+      let match;
+      
+      while ((match = standaloneFunctionPattern.exec(content)) !== null) {
+        // Skip if inside a string
+        if (isInString(match.index)) continue;
+        
+        const functionName = match[1];
+        const startIndex = match.index;
+        
+        // Extract complete function body by counting braces
+        let braceCount = 0;
+        let inString = false;
+        let stringChar = '';
+        let i = startIndex;
+        
+        // Find the opening brace
+        while (i < content.length && content[i] !== '{') i++;
+        if (i >= content.length) continue;
+        
+        braceCount = 1;
+        i++;
+        
+        // Find matching closing brace
+        while (i < content.length && braceCount > 0) {
+          const char = content[i];
+          const prevChar = i > 0 ? content[i - 1] : '';
+          
+          // Handle string literals
+          if (!inString && (char === '"' || char === "'" || char === '`')) {
+            inString = true;
+            stringChar = char;
+          } else if (inString && char === stringChar && prevChar !== '\\') {
+            inString = false;
+          }
+          
+          if (!inString) {
+            if (char === '{') braceCount++;
+            if (char === '}') braceCount--;
+          }
+          i++;
+        }
+        
+        if (braceCount === 0) {
+          const functionCode = content.substring(startIndex, i);
+          
           if (this.isLikelyAlgorithm(functionName, functionCode)) {
+            const lineNumber = content.substring(0, startIndex).split("\n").length;
+            const extractedCode = this.extractFunctionCode(functionCode, functionName);
+            
             detected.push({
               name: this.generateAlgorithmName(functionName, filePath),
-              code: this.extractFunctionCode(functionCode, functionName),
+              code: extractedCode,
+              entryFunction: functionName,
+              language: filePath.endsWith(".ts") ? "typescript" : "javascript",
+              filePath,
+              lineNumber,
+              description: this.generateDescription(functionName, functionCode),
+              category: this.detectCategory(functionName, functionCode),
+            });
+          }
+        }
+      }
+
+      // Also extract arrow functions assigned to const/let/var (standalone, not in strings)
+      const arrowFunctionPattern = /(?:^|\n)(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*(?:\([^)]*\)|(\w+))\s*=>\s*\{/gm;
+      while ((match = arrowFunctionPattern.exec(content)) !== null) {
+        // Skip if inside a string
+        if (isInString(match.index)) continue;
+        
+        const functionName = match[1] || match[2];
+        if (!functionName) continue;
+        
+        const startIndex = match.index;
+        const arrowIndex = match[0].indexOf('=>');
+        let braceCount = 0;
+        let inString = false;
+        let stringChar = '';
+        let i = startIndex + arrowIndex;
+        
+        // Find the opening brace
+        while (i < content.length && content[i] !== '{') i++;
+        if (i >= content.length) continue;
+        
+        braceCount = 1;
+        i++;
+        
+        // Find matching closing brace
+        while (i < content.length && braceCount > 0) {
+          const char = content[i];
+          const prevChar = i > 0 ? content[i - 1] : '';
+          
+          if (!inString && (char === '"' || char === "'" || char === '`')) {
+            inString = true;
+            stringChar = char;
+          } else if (inString && char === stringChar && prevChar !== '\\') {
+            inString = false;
+          }
+          
+          if (!inString) {
+            if (char === '{') braceCount++;
+            if (char === '}') braceCount--;
+          }
+          i++;
+        }
+        
+        if (braceCount === 0) {
+          const functionCode = content.substring(startIndex, i);
+          
+          if (this.isLikelyAlgorithm(functionName, functionCode)) {
+            const lineNumber = content.substring(0, startIndex).split("\n").length;
+            const extractedCode = this.extractFunctionCode(functionCode, functionName);
+            
+            detected.push({
+              name: this.generateAlgorithmName(functionName, filePath),
+              code: extractedCode,
               entryFunction: functionName,
               language: filePath.endsWith(".ts") ? "typescript" : "javascript",
               filePath,
@@ -172,6 +298,81 @@ export class AlgorithmDetector {
     const nameLower = name.toLowerCase();
     const codeLower = code.toLowerCase();
 
+    // Exclude main/setup functions
+    const excludedNames = [
+      'main', 'init', 'setup', 'run', 'start', 'execute', 'benchmark',
+      'test', 'describe', 'it', 'before', 'after', 'beforeEach', 'afterEach'
+    ];
+    
+    if (excludedNames.includes(nameLower)) {
+      return false;
+    }
+
+    // Exclude class methods, constructors, and internal methods
+    const excludedPatterns = [
+      /^(constructor|__dirname|__filename)$/i,
+      /^(get|set|is|has|can|should|will|to|from|parse|stringify|create|build|init|setup|teardown|cleanup)[A-Z]/,
+      /^(private|public|protected|static)\s+/,
+      /^_(internal|private|helper|util)/i,
+      /^(on|off|emit|add|remove|clear|update|delete|save|load|find|list|get|set)[A-Z]/,
+      /^(console|log|error|warn|info|debug)/i,
+    ];
+
+    if (excludedPatterns.some(pattern => pattern.test(name))) {
+      return false;
+    }
+
+    // Exclude async functions that are main/setup functions (usually have orchestrator, console.log, etc.)
+    if (code.includes('async') && (
+      code.includes('orchestrator') || 
+      code.includes('console.log') || 
+      code.includes('console.') ||
+      code.includes('registerAlgorithm') ||
+      code.includes('registerImplementation') ||
+      code.includes('runBenchmark') ||
+      code.includes('registerTestCase') ||
+      code.includes('listAlgorithms') ||
+      code.includes('listImplementations') ||
+      code.match(/\.catch\(/) ||
+      code.match(/\.then\(/)))
+    {
+      return false;
+    }
+
+    // Exclude functions that are clearly setup/main functions (have multiple console.logs, orchestrator calls, etc.)
+    const setupIndicators = [
+      'orchestrator',
+      'registerAlgorithm',
+      'registerImplementation', 
+      'registerTestCase',
+      'runBenchmark',
+      'listAlgorithms',
+      'listImplementations',
+      'formatBenchmarkOutput',
+      'console.log',
+      'console.error',
+      'console.warn'
+    ];
+    
+    const setupIndicatorCount = setupIndicators.filter(indicator => 
+      codeLower.includes(indicator.toLowerCase())
+    ).length;
+    
+    // If function has 2+ setup indicators, it's likely a setup function
+    if (setupIndicatorCount >= 2) {
+      return false;
+    }
+
+    // Exclude if it's a class method (has 'this.' in code but not a standalone function)
+    if (code.includes('this.') && !code.match(/^function\s+\w+\s*\(/)) {
+      return false;
+    }
+
+    // Exclude functions that are just wrappers or have no algorithm logic
+    if (code.split('\n').length < 5) {
+      return false;
+    }
+
     // Check if name matches algorithm patterns
     const nameMatches = this.algorithmNamePatterns.some((pattern) =>
       pattern.test(name)
@@ -182,13 +383,16 @@ export class AlgorithmDetector {
       codeLower.includes(keyword)
     );
 
-    // Check if function has complexity indicators (loops, recursion)
-    const hasComplexity = /(?:for|while|do\s*\{|recursive|recurse)/i.test(code);
+    // Check if function has complexity indicators (loops, recursion, conditionals with logic)
+    const hasComplexity = /(?:for|while|do\s*\{|recursive|recurse|if\s*\([^)]+\)\s*\{[^}]{10,})/i.test(code);
 
-    // Check if function is not a simple getter/setter
-    const isNotSimple = !/^(get|set|is|has|can|should|will)[A-Z]/.test(name);
+    // Must return a value or have side effects that suggest algorithm logic
+    const hasReturnOrLogic = /return\s+/.test(code) || hasComplexity;
 
-    return (nameMatches || hasKeywords) && hasComplexity && isNotSimple;
+    // Must have actual algorithm logic (not just setup/teardown)
+    const hasAlgorithmLogic = hasComplexity && (hasReturnOrLogic || hasKeywords);
+
+    return (nameMatches || hasKeywords) && hasAlgorithmLogic;
   }
 
   private generateAlgorithmName(
@@ -206,24 +410,37 @@ export class AlgorithmDetector {
   }
 
   private extractFunctionCode(code: string, functionName: string): string {
-    // Try to extract just the function body
-    const functionMatch = code.match(
-      /function\s+\w+\s*\([^)]*\)\s*\{([\s\S]*)\}/
-    );
+    // Extract function declaration: function name(...) { ... }
+    const functionMatch = code.match(/function\s+(\w+)\s*(\([^)]*\))\s*\{([\s\S]*)\}/);
     if (functionMatch) {
-      return `function ${functionName}${functionMatch[0].substring(
-        functionMatch[0].indexOf("(")
-      )}`;
+      const params = functionMatch[2];
+      const body = functionMatch[3];
+      return `function ${functionName}${params} {\n${body}\n}`;
     }
 
-    // For arrow functions, try to extract the body
-    const arrowMatch = code.match(/(?:\([^)]*\)|[^=]+)\s*=>\s*\{([\s\S]*)\}/);
+    // Extract arrow function: const name = (...) => { ... }
+    const arrowMatch = code.match(/(?:const|let|var)\s+\w+\s*=\s*(\([^)]*\)|[^=]+)\s*=>\s*\{([\s\S]*)\}/);
     if (arrowMatch) {
-      return `function ${functionName}(input) {\n${arrowMatch[1]}\n}`;
+      const params = arrowMatch[1].startsWith('(') ? arrowMatch[1] : `(${arrowMatch[1]})`;
+      const body = arrowMatch[2];
+      return `function ${functionName}${params} {\n${body}\n}`;
     }
 
-    // Fallback: return the full code
-    return code;
+    // Fallback: try to extract function signature and body
+    const fallbackMatch = code.match(/(\w+)\s*(\([^)]*\))\s*\{([\s\S]*)\}/);
+    if (fallbackMatch) {
+      const params = fallbackMatch[2];
+      const body = fallbackMatch[3];
+      return `function ${functionName}${params} {\n${body}\n}`;
+    }
+
+    // Last resort: return as-is but ensure it's a function
+    if (code.includes('function') || code.includes('=>')) {
+      return code;
+    }
+
+    // If nothing matches, wrap it as a function
+    return `function ${functionName}(input) {\n${code}\n}`;
   }
 
   private generateDescription(name: string, code: string): string {

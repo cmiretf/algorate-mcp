@@ -124,7 +124,9 @@ export class Orchestrator {
       this.results.set(key, implResults);
     }
 
-    return this.analyzer.compareImplementations(algorithmId, testCaseId, aggregatedResults);
+    // Pass the first implementation if only one exists for optimization analysis
+    const singleImpl = implementations.length === 1 ? implementations[0] : undefined;
+    return this.analyzer.compareImplementations(algorithmId, testCaseId, aggregatedResults, singleImpl);
   }
 
   private async benchmarkImplementation(
