@@ -9,13 +9,13 @@ A Model Context Protocol (MCP) server for comprehensive algorithm benchmarking, 
 Install globally via npm:
 
 ```bash
-npm install -g @cmiretf/algorate
+npm install -g @cmiretf/algorate-mcp
 ```
 
 Or add to your project:
 
 ```bash
-npm install @cmiretf/algorate
+npm install @cmiretf/algorate-mcp
 ```
 
 ### Usage
@@ -25,7 +25,7 @@ npm install @cmiretf/algorate
 Test the server interactively:
 
 ```bash
-npm install -g @cmiretf/algorate
+npm install -g @cmiretf/algorate-mcp
 npx @modelcontextprotocol/inspector algorate
 ```
 
@@ -44,7 +44,7 @@ Add to your `claude_desktop_config.json`:
   "mcpServers": {
     "algorate": {
       "command": "npx",
-      "args": ["-y", "@cmiretf/algorate"]
+      "args": ["-y", "@cmiretf/algorate-mcp"]
     }
   }
 }
@@ -72,7 +72,7 @@ Add to your `mcp.json`:
   "servers": {
     "algorate": {
       "command": "npx",
-      "args": ["-y", "@cmiretf/algorate"]
+      "args": ["-y", "@cmiretf/algorate-mcp"]
     }
   }
 }
