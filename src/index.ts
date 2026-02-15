@@ -33,7 +33,7 @@ const server = new Server(
     capabilities: {
       tools: {},
     },
-  }
+  },
 );
 
 // Helper function to format results similar to console output
@@ -42,7 +42,7 @@ function formatBenchmarkOutput(
   algorithmNames: Map<string, string>,
   implementationNames: Map<string, string>,
   testCaseNames: Map<string, string>,
-  implementationCodes?: Map<string, string>
+  implementationCodes?: Map<string, string>,
 ): string {
   let output = "🧪 Algorithm Benchmark\n\n";
 
@@ -114,7 +114,7 @@ function formatBenchmarkOutput(
         output += `   📈 Std dev: ${impl.executionTime.stdDev.toFixed(4)} ms\n`;
         if (impl.memoryPeak) {
           output += `   💾 Memory: ${(impl.memoryPeak.mean / 1024).toFixed(
-            2
+            2,
           )} KB\n`;
         }
         output += "\n";
@@ -406,7 +406,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const result = orchestrator.registerAlgorithm(
           parsed.name,
           parsed.description,
-          parsed.category
+          parsed.category,
         );
         return {
           content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
@@ -429,7 +429,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           parsed.language,
           parsed.code,
           parsed.entryFunction,
-          parsed.description
+          parsed.description,
         );
         return {
           content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
@@ -452,7 +452,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           parsed.inputType,
           parsed.input,
           parsed.expectedOutput,
-          parsed.description
+          parsed.description,
         );
         return {
           content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
@@ -478,7 +478,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const result = await orchestrator.runBenchmark(
           parsed.algorithmId,
           parsed.testCaseId,
-          config
+          config,
         );
         return {
           content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
@@ -518,7 +518,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const parsed = schema.parse(args);
         const result = orchestrator.getResults(
           parsed.implementationId,
-          parsed.testCaseId
+          parsed.testCaseId,
         );
         return {
           content: [
@@ -552,7 +552,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                   })),
                 },
                 null,
-                2
+                2,
               ),
             },
           ],
@@ -581,7 +581,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 text: JSON.stringify(
                   { error: "No algorithms found to benchmark" },
                   null,
-                  2
+                  2,
                 ),
               },
             ],
@@ -596,7 +596,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           const category = algorithm.category || "general";
           const workloads = workloadGenerator.generateWorkloadsForCategory(
             category,
-            algorithm.name
+            algorithm.name,
           );
 
           for (const workload of workloads) {
@@ -606,7 +606,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               workload.inputType,
               workload.input,
               workload.expectedOutput,
-              workload.description
+              workload.description,
             );
 
             const config = BenchmarkConfigSchema.parse({
@@ -621,21 +621,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             const result = await orchestrator.runBenchmark(
               algorithm.id,
               testCase.id,
-              config
+              config,
             );
             results.push(result);
 
             const individualResults =
               orchestrator.getResults(
                 result.implementations[0]?.implementationId || "",
-                testCase.id
+                testCase.id,
               ) || [];
 
             await storage.saveResults(
               algorithm.id,
               testCase.id,
               result,
-              individualResults
+              individualResults,
             );
           }
         }
@@ -656,7 +656,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                   })),
                 },
                 null,
-                2
+                2,
               ),
             },
           ],
@@ -672,7 +672,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
         const stored = await storage.loadResults(
           parsed.algorithmId,
-          parsed.testCaseId
+          parsed.testCaseId,
         );
 
         if (!stored) {
@@ -683,7 +683,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 text: JSON.stringify(
                   { error: "No results found for this algorithm" },
                   null,
-                  2
+                  2,
                 ),
               },
             ],
@@ -717,7 +717,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 text: JSON.stringify(
                   { error: "Invalid stored results" },
                   null,
-                  2
+                  2,
                 ),
               },
             ],
@@ -735,7 +735,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             title: `Benchmark Results - ${parsed.algorithmId.slice(0, 8)}`,
             showMemory: true,
             showErrorBars: true,
-          }
+          },
         );
 
         // Read the generated HTML and save it
@@ -754,7 +754,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                   testCaseId: testCaseId,
                 },
                 null,
-                2
+                2,
               ),
             },
           ],
@@ -786,7 +786,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                   alerts: response.alerts,
                 },
                 null,
-                2
+                2,
               ),
             },
           ],
@@ -818,7 +818,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           const algorithm = orchestrator.registerAlgorithm(
             algo.name,
             algo.description,
-            algo.category
+            algo.category,
           );
           algorithmNames.set(algorithm.id, algorithm.name);
 
@@ -828,7 +828,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             algo.language,
             algo.code,
             algo.entryFunction,
-            algo.description
+            algo.description,
           );
           implementationNames.set(implementation.id, implementation.name);
           implementationCodes.set(implementation.id, algo.code);
@@ -874,7 +874,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         // Step 3.5: Generate optimized versions for single-implementation algorithms
         for (const algorithm of allAlgorithms) {
           const implementations = orchestrator.listImplementations(
-            algorithm.id
+            algorithm.id,
           );
 
           // If only one implementation, generate optimized versions
@@ -882,7 +882,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             const impl = implementations[0];
             const analysis = codeOptimizer.analyzeCode(
               impl.code,
-              impl.entryFunction
+              impl.entryFunction,
             );
 
             // Register optimized versions only if code is valid and executable
@@ -902,7 +902,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 const hasFunction =
                   /function\s+\w+\s*\(/.test(optimized.code) ||
                   /(?:const|let|var)\s+\w+\s*=\s*(?:\([^)]*\)|[^=]+)\s*=>/.test(
-                    optimized.code
+                    optimized.code,
                   );
 
                 if (!hasFunction) {
@@ -915,14 +915,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                   impl.language,
                   optimized.code,
                   impl.entryFunction,
-                  optimized.description
+                  optimized.description,
                 );
                 implementationNames.set(optimizedImpl.id, optimizedImpl.name);
                 implementationCodes.set(optimizedImpl.id, optimized.code);
               } catch (e) {
                 // Skip if optimization code is invalid
                 console.error(
-                  `Failed to register optimized version ${optimized.name}: ${e}`
+                  `Failed to register optimized version ${optimized.name}: ${e}`,
                 );
               }
             }
@@ -958,7 +958,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           const category = algorithm.category || "general";
           const workloads = workloadGenerator.generateWorkloadsForCategory(
             category,
-            algorithm.name
+            algorithm.name,
           );
 
           for (const workload of workloads) {
@@ -968,7 +968,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               workload.inputType,
               workload.input,
               workload.expectedOutput,
-              workload.description
+              workload.description,
             );
             testCaseNames.set(testCase.id, testCase.name);
 
@@ -984,21 +984,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             const result = await orchestrator.runBenchmark(
               algorithm.id,
               testCase.id,
-              config
+              config,
             );
             results.push(result);
 
             const individualResults =
               orchestrator.getResults(
                 result.implementations[0]?.implementationId || "",
-                testCase.id
+                testCase.id,
               ) || [];
 
             await storage.saveResults(
               algorithm.id,
               testCase.id,
               result,
-              individualResults
+              individualResults,
             );
           }
         }
@@ -1009,7 +1009,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           algorithmNames,
           implementationNames,
           testCaseNames,
-          implementationCodes
+          implementationCodes,
         );
 
         return {
