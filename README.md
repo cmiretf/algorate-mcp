@@ -176,12 +176,10 @@ Execute a complete benchmark comparing implementations.
 
 - `algorithmId` (string): Algorithm to benchmark
 - `testCaseId` (string): Test case to use
-- `options` (object):
-  - `warmupRuns` (number): Warmup executions (default: 3)
-  - `measurementRuns` (number): Measurement runs (default: 10)
-  - `timeoutMs` (number): Timeout per execution (default: 5000)
-  - `validateOutput` (boolean): Enable validation (default: true)
-  - `isolateExecutions` (boolean): Worker isolation (default: true)
+- `warmupRuns` (number, optional): Warmup executions (default: 3)
+- `measurementRuns` (number, optional): Measurement runs (default: 10)
+- `timeoutMs` (number, optional): Timeout per execution in ms (default: 30000)
+- `validateOutput` (boolean, optional): Enable validation (default: true)
 
 **Example:**
 
@@ -189,14 +187,44 @@ Execute a complete benchmark comparing implementations.
 {
   "algorithmId": "algo-123",
   "testCaseId": "test-456",
-  "options": {
-    "warmupRuns": 3,
-    "measurementRuns": 10,
-    "validateOutput": true,
-    "isolateExecutions": true
-  }
+  "warmupRuns": 3,
+  "measurementRuns": 10,
+  "validateOutput": true
 }
 ```
+
+#### `list_algorithms`
+
+List all registered algorithms.
+
+**Parameters:**
+
+None
+
+#### `list_implementations`
+
+List implementations, optionally filtered by algorithm.
+
+**Parameters:**
+
+- `algorithmId` (string, optional): Filter by algorithm ID
+
+#### `list_test_cases`
+
+List all registered test cases.
+
+**Parameters:**
+
+None
+
+#### `get_results`
+
+Get benchmark results for a specific implementation and test case.
+
+**Parameters:**
+
+- `implementationId` (string): Implementation ID
+- `testCaseId` (string): Test case ID
 
 ### Analysis & Insights Tools
 
@@ -256,6 +284,54 @@ AI-powered algorithm detection from code.
 
 - `code` (string): Code to analyze
 - `language` (string): "javascript", "typescript", or "python"
+
+#### `auto_detect_algorithms`
+
+Automatically detect algorithms in project files.
+
+**Parameters:**
+
+- `directories` (array of strings, optional): Directories to scan (default: src, examples)
+
+#### `auto_benchmark`
+
+Automatically run benchmarks for detected or registered algorithms.
+
+**Parameters:**
+
+- `algorithmIds` (array of strings, optional): Algorithm IDs to benchmark (empty = all)
+- `forceRefresh` (boolean, optional): Force refresh even if cached results exist
+
+### Visualization & Query Tools
+
+#### `generate_chart`
+
+Generate performance chart for benchmark results.
+
+**Parameters:**
+
+- `algorithmId` (string): Algorithm ID
+- `testCaseId` (string, optional): Test case ID
+
+#### `query_performance`
+
+Query performance analysis with automatic benchmark and summary.
+
+**Parameters:**
+
+- `query` (string): Query about algorithm performance (e.g., "sorting algorithms", "all algorithms")
+- `forceRefresh` (boolean, optional): Force refresh even if cached results exist
+- `directories` (array of strings, optional): Directories to scan for algorithms
+
+#### `benchmark_all`
+
+Automatically detect all algorithms, run benchmarks, and return formatted results (ONE-CLICK BENCHMARK).
+
+**Parameters:**
+
+- `directories` (array of strings, optional): Directories to scan (default: src, examples)
+- `filePath` (string, optional): Specific file path to analyze (if provided, only analyzes this file)
+- `forceRefresh` (boolean, optional): Force refresh even if cached results exist
 
 ## 📊 Metrics Explained
 
