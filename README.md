@@ -598,10 +598,43 @@ SOFTWARE.
 
 ## 🔐 Security
 
-- **Isolated Execution**: Uses Worker threads to sandbox code execution
-- **Timeout Protection**: Prevents infinite loops and hanging processes
-- **Memory Limits**: Monitors and controls memory consumption
-- **Input Validation**: Validates all inputs before execution
+> ⚠️ **Remote Code Execution Risk**: This server compiles and runs JavaScript supplied by the MCP caller inside the Node.js process. Worker threads provide fault isolation, **not** a security sandbox — injected code still has full access to the filesystem, network, environment variables, and child processes of the user running the server. Treat this tool as you would a local REPL.
+
+### Enabling code execution
+
+For safety, the tools that accept or execute caller-supplied code are disabled by default. Enable them only when the MCP client is fully trusted by setting the environment variable:
+
+```bash
+ALGORATE_ALLOW_CODE_EXECUTION=1
+```
+
+Affected tools: `register_implementation`, `run_benchmark`, `auto_benchmark`, `benchmark_all`.
+
+Example `claude_desktop_config.json` entry:
+
+```json
+{
+  "mcpServers": {
+    "algorate": {
+      "command": "npx",
+      "args": ["-y", "@cmiretf/algorate-mcp"],
+      "env": {
+        "ALGORATE_ALLOW_CODE_EXECUTION": "1"
+      }
+    }
+  }
+}
+```
+
+Without this variable the execution tools respond with a safety error. Read-only tools (`list_algorithms`, `get_results`, `query_performance`, `generate_chart`, etc.) keep working.
+
+### Other defenses
+
+- **Isolated Execution**: Uses Worker threads to reduce fault blast radius (not a security boundary).
+- **Timeout Protection**: Prevents infinite loops and hanging processes.
+- **Memory Monitoring**: Tracks memory consumption during runs.
+- **UUID-validated paths**: `generate_chart` rejects non-UUID `algorithmId` / `testCaseId` to prevent path traversal into chart file writes.
+- **Input Validation**: All tool arguments are parsed with zod before use.
 
 ## 📞 Support
 

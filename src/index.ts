@@ -24,6 +24,30 @@ const chartGenerator = new ChartGenerator();
 const storage = new ResultStorage();
 const codeOptimizer = new CodeOptimizer();
 
+const CODE_EXECUTION_ENABLED =
+  process.env.ALGORATE_ALLOW_CODE_EXECUTION === "1";
+
+function codeExecutionDisabledError(toolName: string) {
+  return {
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify(
+          {
+            error:
+              "Code execution is disabled for safety. This MCP server compiles and runs caller-supplied JavaScript, which is remote code execution. Enable only when the MCP client is fully trusted by setting the environment variable ALGORATE_ALLOW_CODE_EXECUTION=1 before starting the server.",
+            tool: toolName,
+            docs: "https://github.com/cmiretf/algorate-mcp#security",
+          },
+          null,
+          2,
+        ),
+      },
+    ],
+    isError: true,
+  };
+}
+
 const server = new Server(
   {
     name: "algorate",
@@ -414,6 +438,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case "register_implementation": {
+        if (!CODE_EXECUTION_ENABLED) {
+          return codeExecutionDisabledError("register_implementation");
+        }
         const schema = z.object({
           algorithmId: z.string(),
           name: z.string(),
@@ -460,6 +487,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case "run_benchmark": {
+        if (!CODE_EXECUTION_ENABLED) {
+          return codeExecutionDisabledError("run_benchmark");
+        }
         const schema = z.object({
           algorithmId: z.string(),
           testCaseId: z.string(),
@@ -560,6 +590,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case "auto_benchmark": {
+        if (!CODE_EXECUTION_ENABLED) {
+          return codeExecutionDisabledError("auto_benchmark");
+        }
         const schema = z.object({
           algorithmIds: z.array(z.string()).optional(),
           forceRefresh: z.boolean().optional().default(false),
@@ -665,8 +698,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case "generate_chart": {
         const schema = z.object({
-          algorithmId: z.string(),
-          testCaseId: z.string().optional(),
+          algorithmId: z.string().uuid(),
+          testCaseId: z.string().uuid().optional(),
         });
         const parsed = schema.parse(args);
 
@@ -794,6 +827,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case "benchmark_all": {
+        if (!CODE_EXECUTION_ENABLED) {
+          return codeExecutionDisabledError("benchmark_all");
+        }
         const schema = z.object({
           directories: z.array(z.string()).optional(),
           filePath: z.string().optional(),
