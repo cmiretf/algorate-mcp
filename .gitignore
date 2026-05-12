@@ -39,7 +39,3 @@ coverage/
 # Benchmark results
 benchmark-results/
 
-*.md
-!AGENTS.md
-!README.md
-!TESTING_GUIDE.md
