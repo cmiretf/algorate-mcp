@@ -40,3 +40,6 @@ coverage/
 benchmark-results/
 
 *.md
+!AGENTS.md
+!README.md
+!TESTING_GUIDE.md
